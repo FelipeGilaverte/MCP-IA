@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "automation-intel-mcp"
+version = "0.1.0"
+description = "MCP + LangGraph starter for deep research and an automation agency workflow"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "OpenAI ChatGPT" }]
+dependencies = [
+  "mcp[cli]>=1.2.0",
+  "langgraph>=1.0.0",
+  "perplexityai>=0.4.0",
+  "pydantic>=2.7.0",
+  "pydantic-settings>=2.3.0",
+  "httpx>=0.27.0,<0.28.0",
+  "trafilatura>=1.12.0",
+  "typer>=0.12.3",
+  "rich>=13.7.1",
+  "python-dotenv>=1.0.1",
+  "pytest>=8.0.0",
+  "uvicorn>=0.30.0"
+]
+
+[project.scripts]
+automation-intel = "automation_intel_mcp.cli:app"
+automation-intel-research-mcp = "automation_intel_mcp.research_server:main"
+automation-intel-agency-mcp = "automation_intel_mcp.agency_server:main"
+automation-intel-research-http = "automation_intel_mcp.research_server:main_streamable_http"
+automation-intel-agency-http = "automation_intel_mcp.agency_server:main_streamable_http"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "automation-intel-research": {
+      "command": "python",
+      "args": [
+        "-m",
+        "automation_intel_mcp.research_server"
+      ],
+      "cwd": "/ABSOLUTE/PATH/TO/automation-intel-mcp",
+      "env": {
+        "PERPLEXITY_API_KEY": "REPLACE_WITH_NEW_KEY"
+      }
+    },
+    "automation-intel-agency": {
+      "command": "python",
+      "args": [
+        "-m",
+        "automation_intel_mcp.agency_server"
+      ],
+      "cwd": "/ABSOLUTE/PATH/TO/automation-intel-mcp",
+      "env": {
+        "PERPLEXITY_API_KEY": "REPLACE_WITH_NEW_KEY"
+      }
+    }
+  }
+}
