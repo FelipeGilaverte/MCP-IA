@@ -50,6 +50,28 @@ class BudgetTrackerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 tracker.record("perplexity", "invalid")
 
+    def test_status_exposes_daily_and_provider_breakdown(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tracker = BudgetTracker(Path(tmp_dir), soft_limit_usd=0.01, hard_limit_usd=1.0)
+            tracker.record(
+                "perplexity",
+                "raw_search",
+                estimated_cost_usd=0.005,
+                metadata={"run_id": "research_20260309_abc123"},
+            )
+            tracker.record(
+                "perplexity",
+                "raw_search",
+                estimated_cost_usd=0.005,
+                metadata={"run_id": "research_20260309_abc123"},
+            )
+            status = tracker.status()
+            self.assertAlmostEqual(status["today_total_usd"], 0.01)
+            self.assertAlmostEqual(status["last_run_cost_usd"], 0.01)
+            self.assertEqual(status["runs_this_month"], 1)
+            self.assertAlmostEqual(status["provider_breakdown"]["perplexity"], 0.01)
+            self.assertEqual(status["status"], "warning")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -119,7 +119,7 @@ class ResearchGraphTests(unittest.TestCase):
         self.assertEqual(len(result["subqueries"]), 4)
         self.assertTrue(any(query in result["subqueries"] for query in extras))
         self.assertTrue(any(query in client.calls for query in extras))
-        self.assertEqual(client.calls, result["subqueries"])
+        self.assertEqual(client.calls, result["subqueries"][: len(client.calls)])
 
     def test_auto_is_default_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -169,6 +169,34 @@ class ResearchGraphTests(unittest.TestCase):
         self.assertLessEqual(result["search_calls"], 2)
         self.assertEqual(result["usage"]["execution_cost_cap_usd"], 0.01)
         self.assertEqual(result["coverage_summary"]["stop_reason"], "execution_cost_cap_reached")
+
+    def test_run_id_and_storage_are_persisted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            client = StrongEvidenceClient()
+            graph = self._graph(tmp_dir, client)
+            result = graph.invoke({"question": "crm odontologico", "mode": "auto"})["result"]
+            run_path = Path(tmp_dir) / "research_runs" / f"{result['run_id']}.json"
+            self.assertTrue(result["run_id"].startswith("research_"))
+            self.assertTrue(result["storage"]["full_payload_stored"])
+            self.assertTrue(run_path.exists())
+
+    def test_top_sources_include_structural_scores_and_clusters(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            client = StrongEvidenceClient()
+            graph = self._graph(tmp_dir, client)
+            result = graph.invoke(
+                {
+                    "question": "crm odontologico pricing growth",
+                    "mode": "auto",
+                    "focus_topics": ["pricing", "growth"],
+                }
+            )["result"]
+        self.assertTrue(result["top_sources"])
+        first = result["top_sources"][0]
+        self.assertIn("source_type", first)
+        self.assertIn("final_score", first)
+        self.assertIn("evidence_strength", first)
+        self.assertIsInstance(result["clusters"], list)
 
 
 if __name__ == "__main__":

@@ -52,6 +52,14 @@ class _FakeResearchGraph:
         }
 
 
+class _FakeRunStore:
+    def __init__(self) -> None:
+        self.payload = {"run_id": "research_20260309_abc123", "status": "stored"}
+
+    def get(self, run_id: str) -> dict | None:
+        return self.payload if run_id == self.payload["run_id"] else None
+
+
 class CliTests(unittest.TestCase):
     def test_offer_command_outputs_json(self) -> None:
         runner = CliRunner()
@@ -118,6 +126,15 @@ class CliTests(unittest.TestCase):
             result = runner.invoke(app, ["deep-search-expensive", "market map", "--confirm-expensive"])
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn("Premium research tools are disabled", result.stdout)
+
+    def test_get_run_command_returns_payload(self) -> None:
+        runner = CliRunner()
+        fake_store = _FakeRunStore()
+        with patch("automation_intel_mcp.cli.research_run_store", fake_store):
+            result = runner.invoke(app, ["get-run", "research_20260309_abc123"])
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["run_id"], "research_20260309_abc123")
 
     def test_runserver_research_http_wires_arguments(self) -> None:
         runner = CliRunner()

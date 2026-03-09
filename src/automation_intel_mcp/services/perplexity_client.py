@@ -9,6 +9,17 @@ from automation_intel_mcp.config import Settings
 from automation_intel_mcp.models import ResearchResponse, SearchResult
 from automation_intel_mcp.services.budget import BudgetTracker
 from automation_intel_mcp.services.cache import FileCache
+from automation_intel_mcp.services.research_features import (
+    canonicalize_url,
+    classify_source_type,
+    evidence_strength,
+    extract_key_points,
+    score_credibility,
+    score_final,
+    score_freshness,
+    score_relevance,
+    tokenize_query_terms,
+)
 
 
 class PerplexityResearchClient:
@@ -117,6 +128,36 @@ class PerplexityResearchClient:
             max_tokens_per_page=max_tokens_per_page,
         )
         payload = self._obj_to_dict(response)
+        query_terms = tokenize_query_terms(query)
+        enriched_results: list[dict[str, Any]] = []
+        for item in payload.get("results", []):
+            if not isinstance(item, dict):
+                continue
+            title = item.get("title")
+            url = item.get("url")
+            snippet = item.get("snippet")
+            source_type = classify_source_type(url, title, snippet)
+            relevance_score = score_relevance(query_terms, title, snippet, url)
+            credibility_score = score_credibility(source_type, "low")
+            freshness_score = score_freshness(item.get("date"), item.get("last_updated"))
+            final_score = score_final(relevance_score, credibility_score, freshness_score)
+            enriched_results.append(
+                SearchResult.model_validate(
+                    {
+                        **item,
+                        "canonical_url": canonicalize_url(url),
+                        "source_type": source_type,
+                        "published_at": item.get("date"),
+                        "relevance_score": relevance_score,
+                        "credibility_score": credibility_score,
+                        "freshness_score": freshness_score,
+                        "final_score": final_score,
+                        "evidence_strength": evidence_strength(final_score, "low"),
+                        "extraction_quality": "low",
+                        "key_points": extract_key_points(snippet),
+                    }
+                ).model_dump()
+            )
         budget_meta = self._record_budget(
             operation="raw_search",
             payload=payload,
@@ -126,7 +167,7 @@ class PerplexityResearchClient:
         result = {
             "mode": "raw-search",
             "query": query,
-            "results": payload.get("results", []),
+            "results": enriched_results,
             "usage": budget_meta,
             "cached": False,
         }

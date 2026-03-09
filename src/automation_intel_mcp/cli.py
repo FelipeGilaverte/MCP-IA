@@ -9,7 +9,7 @@ from pathlib import Path
 import typer
 
 from automation_intel_mcp import agency_server, research_server, server
-from automation_intel_mcp.runtime import agency_graph, budget, perplexity_client, research_graph, settings
+from automation_intel_mcp.runtime import agency_graph, budget, perplexity_client, research_graph, research_run_store, settings
 from automation_intel_mcp.tools.agency_logic import build_commercial_offer, build_outreach, score_niche_locally
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -92,6 +92,16 @@ def research(
     except Exception as exc:
         _print_json({"status": "error", "error": str(exc)})
         raise typer.Exit(code=1)
+
+
+@app.command("get-run")
+def get_run(run_id: str) -> None:
+    """Fetch a stored research payload by run_id."""
+    payload = research_run_store.get(run_id)
+    if payload is None:
+        _print_json({"status": "error", "error": f"Unknown run_id: {run_id}"})
+        raise typer.Exit(code=1)
+    _print_json(payload)
 
 
 @app.command("deep-search-expensive")

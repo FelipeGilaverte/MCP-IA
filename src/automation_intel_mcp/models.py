@@ -9,10 +9,36 @@ from pydantic import BaseModel, Field
 class SearchResult(BaseModel):
     title: str
     url: str
+    canonical_url: str | None = None
     snippet: str | None = None
+    source_type: str | None = None
     date: str | None = None
+    published_at: str | None = None
     last_updated: str | None = None
+    relevance_score: float | None = None
+    credibility_score: float | None = None
+    freshness_score: float | None = None
+    final_score: float | None = None
+    evidence_strength: str | None = None
+    extraction_quality: str | None = None
+    key_points: list[str] = Field(default_factory=list)
+    content_hash: str | None = None
     source: str | None = None
+
+
+class ResearchCluster(BaseModel):
+    topic: str
+    source_count: int = 0
+    top_urls: list[str] = Field(default_factory=list)
+
+
+class ResearchContradiction(BaseModel):
+    topic: str
+    claim_a: str
+    source_a: str
+    claim_b: str
+    source_b: str
+    notes: str = ""
 
 
 class CostRecord(BaseModel):
@@ -39,22 +65,35 @@ class ResearchResponse(BaseModel):
 
 
 class ResearchWorkflowResult(BaseModel):
+    run_id: str | None = None
     query: str
     intent: str
     mode_requested: str
     mode_used: str
+    input: dict[str, Any] = Field(default_factory=dict)
     search_strategy: str
     min_searches: int
     max_searches: int
     search_calls: int
+    search_plan: dict[str, Any] = Field(default_factory=dict)
+    results: dict[str, Any] = Field(default_factory=dict)
     subqueries: list[str] = Field(default_factory=list)
     results_by_subquery: dict[str, list[SearchResult]] = Field(default_factory=dict)
     deduped_sources: list[SearchResult] = Field(default_factory=list)
+    top_sources: list[SearchResult] = Field(default_factory=list)
+    clusters: list[ResearchCluster] = Field(default_factory=list)
+    contradictions: list[ResearchContradiction] = Field(default_factory=list)
     coverage_summary: dict[str, Any] = Field(default_factory=dict)
     findings: list[str] = Field(default_factory=list)
     gaps_or_uncertainties: list[str] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
     suggested_next_steps: list[str] = Field(default_factory=list)
     usage: dict[str, Any] = Field(default_factory=dict)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    budget: dict[str, Any] = Field(default_factory=dict)
+    storage: dict[str, Any] = Field(default_factory=dict)
+    raw_evidence_preview: list[dict[str, str]] = Field(default_factory=list)
     cached: bool = False
     question: str | None = None
     summary: str = ""
@@ -65,10 +104,18 @@ class ResearchWorkflowResult(BaseModel):
 
 class UrlExtractionResult(BaseModel):
     url: str
+    canonical_url: str | None = None
     status_code: int
     final_url: str
     title: str | None = None
     meta_description: str | None = None
+    extraction_quality: str = "low"
+    content_length_chars: int = 0
+    language: str | None = None
+    published_at: str | None = None
+    last_updated: str | None = None
+    main_text: str = ""
+    content_hash: str | None = None
     extracted_text: str = ""
     excerpt: str = ""
     fetched_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -76,11 +123,19 @@ class UrlExtractionResult(BaseModel):
 
 class WebPageSnapshot(BaseModel):
     url: str
+    canonical_url: str | None = None
     status_code: int
     final_url: str
     html: str
     title: str | None = None
     meta_description: str | None = None
+    extraction_quality: str = "low"
+    content_length_chars: int = 0
+    language: str | None = None
+    published_at: str | None = None
+    last_updated: str | None = None
+    main_text: str = ""
+    content_hash: str | None = None
     extracted_text: str = ""
     excerpt: str = ""
     fetched_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -89,10 +144,18 @@ class WebPageSnapshot(BaseModel):
     def to_extraction_result(self) -> UrlExtractionResult:
         return UrlExtractionResult(
             url=self.url,
+            canonical_url=self.canonical_url,
             status_code=self.status_code,
             final_url=self.final_url,
             title=self.title,
             meta_description=self.meta_description,
+            extraction_quality=self.extraction_quality,
+            content_length_chars=self.content_length_chars,
+            language=self.language,
+            published_at=self.published_at,
+            last_updated=self.last_updated,
+            main_text=self.main_text,
+            content_hash=self.content_hash,
             extracted_text=self.extracted_text,
             excerpt=self.excerpt,
             fetched_at=self.fetched_at,

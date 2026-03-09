@@ -1,46 +1,51 @@
 # automation-intel-mcp
 
-O `automation-intel-mcp` expõe dois servidores MCP separados de propósito:
+O `automation-intel-mcp` expõe dois servidores MCP separados:
 
 - `automation-intel-research`: motor geral de pesquisa e inteligência
 - `automation-intel-agency`: motor comercial e operacional da agência
 
 Essa separação é intencional.
 
-- O Research MCP é genérico e não é exclusivo da agência.
+- O Research MCP é genérico e evidence-first.
 - O Research MCP usa a Perplexity principalmente para busca e coleta de evidências.
-- O GPT/OpenAI deve fazer o raciocínio, a síntese, a comparação e o ranking depois.
-- O Agency MCP trabalha principalmente com scraping, análise local e heurísticas.
-- O Agency MCP pode consultar o Research MCP opcionalmente, com defaults conservadores.
+- O GPT/OpenAI faz a análise, a comparação, o ranking e a síntese final depois.
+- O Agency MCP trabalha com scraping, análise local e heurísticas.
+- O Agency MCP pode consultar o Research MCP opcionalmente, de forma conservadora.
 
 ## Arquitetura
 
 ### Research MCP
 
-O fluxo padrão do Research MCP é evidence-first:
+O Research MCP é um `execution engine` de pesquisa.
 
-1. classifica a intenção
-2. começa com um plano leve
-3. gera subqueries neutras
-4. roda buscas raw na Perplexity
-5. deduplica fontes e snippets
-6. para cedo quando a cobertura já é suficiente ou quando o budget manda parar
-7. retorna evidência estruturada para o GPT/OpenAI raciocinar depois
+Ele faz:
 
-Regras importantes:
+- executar buscas
+- aceitar `subqueries` e `focus_topics` quando o host fornece
+- extrair páginas
+- deduplicar e normalizar fontes
+- classificar estruturalmente as fontes
+- pré-rankear tecnicamente
+- clusterizar evidência de forma leve
+- detectar contradições estruturais simples
+- registrar custo, métricas e warnings
+- persistir payloads completos por `run_id`
 
-- o fluxo padrão não chama a Perplexity de novo para sintetizar uma resposta final
-- o fluxo padrão usa apenas raw search
-- o modo público padrão é `auto`
-- `research_quick_search` não faz parte da superfície MCP
-- pesquisa premium cara da Perplexity não fica exposta via MCP por padrão
-- o core de research é neutro de domínio
+Ele não faz:
+
+- decomposição conceitual principal da pesquisa
+- ranking analítico final
+- síntese estratégica
+- resposta final ao usuário
+- orquestração autônoma
 
 Tools do Research MCP:
 
 - `research_raw_search`
 - `web_extract_url`
 - `graph_run_research`
+- `research_get_run`
 - `system_budget_status`
 
 ### Agency MCP
@@ -54,7 +59,7 @@ Responsabilidades principais:
 - gerar oferta e outreach
 - opcionalmente usar evidência do Research MCP
 
-Quando o Agency usa pesquisa externa, ele não contamina o core genérico de research. Em vez disso, injeta `extra_subqueries` específicas de negócio na camada da agência.
+Quando o Agency usa pesquisa externa, ele não contamina o core de research. Em vez disso, injeta `extra_subqueries` específicas de negócio.
 
 Tools do Agency MCP:
 
@@ -103,7 +108,7 @@ A pesquisa premium cara continua existindo apenas como caminho manual:
 - é controlada por `ENABLE_PREMIUM_RESEARCH_TOOLS=false` por padrão
 - mesmo habilitada, ainda exige `--confirm-expensive`
 
-## Quantidade de resultados do raw search
+## Raw search
 
 A quantidade de resultados retornados por busca é configurável.
 
@@ -112,11 +117,135 @@ A quantidade de resultados retornados por busca é configurável.
 - variável de ambiente: `PERPLEXITY_RAW_SEARCH_MAX_RESULTS`
 - valor padrão: `10`
 
+O `research_raw_search` retorna, quando disponível:
+
+- `title`
+- `url`
+- `canonical_url`
+- `snippet`
+- `date`
+- `source_type`
+- `relevance_score`
+- `credibility_score`
+- `freshness_score`
+- `final_score`
+
 Você também pode sobrescrever por chamada:
 
 ```bash
 automation-intel rawsearch "clinicas odontologicas em sao paulo" --max-results 5
 ```
+
+## web_extract_url
+
+`web_extract_url` retorna um payload enriquecido com:
+
+- `canonical_url`
+- `extraction_quality`
+- `content_length_chars`
+- `language`
+- `published_at`
+- `last_updated`
+- `title`
+- `main_text`
+- `content_hash`
+
+Isso ajuda em dedupe, cache e auditoria.
+
+## graph_run_research
+
+`graph_run_research` continua sendo a tool principal do Research MCP, mas agora funciona como executor robusto.
+
+Entrada compatível:
+
+```json
+{
+  "question": "compare clinic CRMs in Brazil",
+  "mode": "auto"
+}
+```
+
+Entrada estruturada opcional:
+
+```json
+{
+  "question": "compare clinic CRMs in Brazil",
+  "subqueries": [
+    "crm para clinicas odontologicas brasil",
+    "pricing of clinic CRM vendors in Brazil"
+  ],
+  "focus_topics": ["vendors", "pricing", "growth"],
+  "mode": "auto",
+  "execution_cost_cap_usd": 0.5,
+  "allow_exhaustive": false
+}
+```
+
+Regras:
+
+- se `subqueries` vierem do host, elas ganham prioridade prática
+- se `subqueries` não vierem, o comportamento compatível é mantido
+- o MCP não vira planner semântico forte
+
+## run_id, envelope e recuperação
+
+Toda execução do `graph_run_research` agora gera um `run_id`.
+
+Esse `run_id` aparece em:
+
+- retorno da tool
+- logs
+- métricas
+- tracking de custo
+- persistência local
+
+O retorno padrão agora é um envelope operacional compacto, com:
+
+- `run_id`
+- `input`
+- `search_plan`
+- `results`
+- `top_sources`
+- `clusters`
+- `contradictions`
+- `gaps`
+- `warnings`
+- `metrics`
+- `budget`
+- `storage`
+- `raw_evidence_preview`
+
+O payload completo continua armazenado e pode ser recuperado depois com:
+
+- `research_get_run`
+
+ou pela CLI:
+
+```bash
+automation-intel get-run research_20260309_abc123
+```
+
+## Budget e custo
+
+O sistema preserva o tracker existente e expõe mais transparência.
+
+`system_budget_status` agora retorna:
+
+- `month_total_usd`
+- `today_total_usd`
+- `last_run_cost_usd`
+- `runs_this_month`
+- `provider_breakdown`
+- `caps`
+- `status`
+
+Cada run do graph também devolve:
+
+- `provider_search_cost_usd`
+- `provider_extraction_cost_usd`
+- `total_cost_usd`
+- `cost_cap_usd`
+- `cost_source`
 
 ## Configuração
 
@@ -143,9 +272,6 @@ Configurações importantes:
 - `RESEARCH_DEFAULT_EXECUTION_COST_CAP_USD`
 - `PERPLEXITY_RAW_SEARCH_MAX_RESULTS`
 - `ENABLE_PREMIUM_RESEARCH_TOOLS`
-- `AGENCY_ENABLE_EXTERNAL_RESEARCH`
-- `AGENCY_EXTERNAL_RESEARCH_DEFAULT_MODE`
-- `AGENCY_EXTERNAL_RESEARCH_MAX_MODE`
 - `BUDGET_SOFT_LIMIT_USD`
 - `BUDGET_HARD_LIMIT_USD`
 - `CACHE_ENABLED`
@@ -173,6 +299,12 @@ Pesquisa evidence-first:
 automation-intel research "compare clinic CRMs in Brazil" --json
 ```
 
+Buscar por `run_id`:
+
+```bash
+automation-intel get-run research_20260309_abc123
+```
+
 Análise de empresa com pesquisa externa conservadora:
 
 ```bash
@@ -192,34 +324,6 @@ Subir MCPs remotos por Streamable HTTP:
 automation-intel runserver-research-http --host 0.0.0.0 --port 8000 --public-base-url https://research.seudominio.com
 automation-intel runserver-agency-http --host 0.0.0.0 --port 8001 --public-base-url https://agency.seudominio.com
 ```
-
-Entry points diretos:
-
-```bash
-automation-intel-research-http
-automation-intel-agency-http
-```
-
-## Formato padrão da saída de research
-
-O graph padrão retorna evidência estruturada para o GPT/OpenAI raciocinar depois, incluindo:
-
-- `query`
-- `intent`
-- `mode_requested`
-- `mode_used`
-- `search_strategy`
-- `min_searches`
-- `max_searches`
-- `search_calls`
-- `subqueries`
-- `results_by_subquery`
-- `deduped_sources`
-- `coverage_summary`
-- `findings`
-- `gaps_or_uncertainties`
-- `suggested_next_steps`
-- `usage`
 
 ## ChatGPT
 
@@ -249,40 +353,10 @@ AGENCY_MCP_HTTP_PATH=/mcp
 AGENCY_MCP_PUBLIC_BASE_URL=https://agency.seudominio.com
 ```
 
-Start commands:
-
-```bash
-automation-intel runserver-research-http --host 0.0.0.0 --port 8000 --public-base-url https://research.seudominio.com
-```
-
-```bash
-automation-intel runserver-agency-http --host 0.0.0.0 --port 8001 --public-base-url https://agency.seudominio.com
-```
-
 Endpoints esperados:
 
 - `https://research.seudominio.com/mcp`
 - `https://agency.seudominio.com/mcp`
-
-Observações práticas:
-
-- a recomendação é publicar os dois MCPs separadamente
-- o Research MCP costuma ser o primeiro a subir
-- o Agency MCP pode ser publicado depois, quando você quiser usar a camada comercial no ChatGPT
-- o projeto já fica pronto para Streamable HTTP; falta apenas escolher onde hospedar
-
-## Deploy rápido
-
-Um fluxo simples em VPS, Railway, Render, Fly.io ou similar:
-
-1. instalar Python 3.11+
-2. instalar o projeto
-3. configurar as variáveis de ambiente
-4. expor a porta do processo
-5. iniciar um dos comandos HTTP acima
-6. colocar HTTPS na frente
-
-Se a plataforma injeta a porta em variável de ambiente, reflita isso no comando de start ou nas env vars.
 
 ## Artefatos locais
 
@@ -296,7 +370,3 @@ Os itens abaixo são locais e não devem entrar na distribuição do código-fon
 - `*.pyc`
 
 Mantenha o `.env.example` no projeto. Mantenha seu `.env` local na sua máquina. Não inclua o `.env` real em repositórios, zips ou distribuição de código-fonte.
-#   M C P - I A  
- #   M C P - I A  
- #   M C P - I A  
- 

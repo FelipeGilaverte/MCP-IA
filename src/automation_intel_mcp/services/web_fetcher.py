@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from html import unescape
 
@@ -9,6 +10,7 @@ import trafilatura
 from automation_intel_mcp.config import Settings
 from automation_intel_mcp.models import UrlExtractionResult, WebPageSnapshot
 from automation_intel_mcp.services.cache import FileCache
+from automation_intel_mcp.services.research_features import canonicalize_url, classify_language, extraction_quality
 
 _SCRIPT_STYLE_PATTERN = re.compile(r"<(script|style)[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
 _TAG_PATTERN = re.compile(r"<[^>]+>")
@@ -16,7 +18,25 @@ _META_DESCRIPTION_PATTERN = re.compile(
     r'<meta[^>]+name=["\']description["\'][^>]+content=["\'](.*?)["\']',
     re.IGNORECASE | re.DOTALL,
 )
+_CANONICAL_PATTERN = re.compile(r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\'](.*?)["\']', re.IGNORECASE | re.DOTALL)
 _TITLE_PATTERN = re.compile(r"<title>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+_LANG_PATTERN = re.compile(r"<html[^>]+lang=[\"'](.*?)[\"']", re.IGNORECASE | re.DOTALL)
+_PUBLISHED_META_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE | re.DOTALL)
+    for pattern in [
+        r'<meta[^>]+property=["\']article:published_time["\'][^>]+content=["\'](.*?)["\']',
+        r'<meta[^>]+name=["\']date["\'][^>]+content=["\'](.*?)["\']',
+        r'<meta[^>]+itemprop=["\']datePublished["\'][^>]+content=["\'](.*?)["\']',
+    ]
+]
+_UPDATED_META_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE | re.DOTALL)
+    for pattern in [
+        r'<meta[^>]+property=["\']article:modified_time["\'][^>]+content=["\'](.*?)["\']',
+        r'<meta[^>]+name=["\']last-modified["\'][^>]+content=["\'](.*?)["\']',
+        r'<meta[^>]+itemprop=["\']dateModified["\'][^>]+content=["\'](.*?)["\']',
+    ]
+]
 _WHITESPACE_PATTERN = re.compile(r"\s+")
 
 
@@ -71,13 +91,26 @@ class WebFetcher:
 
         title_match = _TITLE_PATTERN.search(html)
         meta_description_match = _META_DESCRIPTION_PATTERN.search(html)
+        canonical_match = _CANONICAL_PATTERN.search(html)
+        html_lang_match = _LANG_PATTERN.search(html)
+        published_at = next((match.group(1).strip() for pattern in _PUBLISHED_META_PATTERNS if (match := pattern.search(html))), None)
+        last_updated = next((match.group(1).strip() for pattern in _UPDATED_META_PATTERNS if (match := pattern.search(html))), None)
+        main_text = extracted.strip()
         snapshot = WebPageSnapshot(
             url=url,
+            canonical_url=canonicalize_url(canonical_match.group(1).strip() if canonical_match else str(response.url)),
             status_code=response.status_code,
             final_url=str(response.url),
             html=html,
             title=title_match.group(1).strip() if title_match else None,
             meta_description=meta_description_match.group(1).strip() if meta_description_match else None,
+            extraction_quality=extraction_quality(main_text),
+            content_length_chars=len(main_text),
+            language=classify_language(html_lang_match.group(1).strip() if html_lang_match else None, main_text),
+            published_at=published_at,
+            last_updated=last_updated,
+            main_text=main_text,
+            content_hash=hashlib.sha256(main_text.encode("utf-8")).hexdigest() if main_text else None,
             extracted_text=extracted,
             excerpt=extracted[:800],
             cached=False,

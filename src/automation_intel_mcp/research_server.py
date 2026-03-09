@@ -3,7 +3,7 @@ from __future__ import annotations
 from mcp.server.fastmcp import FastMCP
 
 from automation_intel_mcp.mcp_transport import configure_streamable_http_server, run_streamable_http_server
-from automation_intel_mcp.runtime import budget, research_graph, web_fetcher
+from automation_intel_mcp.runtime import budget, research_graph, research_run_store, web_fetcher
 from automation_intel_mcp.runtime import settings as app_settings
 
 mcp = FastMCP("automation-intel-research")
@@ -26,22 +26,37 @@ def web_extract_url(url: str) -> dict:
 @mcp.tool()
 def graph_run_research(
     question: str,
+    subqueries: list[str] | None = None,
+    focus_topics: list[str] | None = None,
     mode: str = "auto",
     max_searches: int | None = None,
     execution_cost_cap_usd: float | None = None,
     allow_exhaustive: bool = False,
+    return_full_payload: bool = False,
 ) -> dict:
     """Default evidence-first research path using raw search only."""
     result = research_graph.invoke(
         {
             "question": question,
+            "subqueries": subqueries or [],
+            "focus_topics": focus_topics or [],
             "mode": mode,
             "max_searches": max_searches,
             "execution_cost_cap_usd": execution_cost_cap_usd,
             "allow_exhaustive": allow_exhaustive,
+            "return_full_payload": return_full_payload,
         }
     )
     return result.get("result", {})
+
+
+@mcp.tool()
+def research_get_run(run_id: str) -> dict:
+    """Return the full stored payload for a previous research run."""
+    payload = research_run_store.get(run_id)
+    if payload is None:
+        raise ValueError(f"Unknown run_id: {run_id}")
+    return payload
 
 
 @mcp.tool()

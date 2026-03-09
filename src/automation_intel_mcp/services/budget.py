@@ -45,9 +45,64 @@ class BudgetTracker:
                 rows.append(row)
         return rows
 
+    def iter_all_rows(self) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        if not self.log_path.exists():
+            return rows
+        for line in self.log_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            rows.append(row)
+        return rows
+
+    def iter_today_rows(self) -> list[dict[str, Any]]:
+        today = datetime.now(timezone.utc).date()
+        rows: list[dict[str, Any]] = []
+        for row in self.iter_all_rows():
+            timestamp = row.get("timestamp")
+            if not timestamp:
+                continue
+            try:
+                row_date = datetime.fromisoformat(timestamp).date()
+            except ValueError:
+                continue
+            if row_date == today:
+                rows.append(row)
+        return rows
+
     def current_month_total(self) -> float:
         total = sum(self._row_cost(row) for row in self.iter_month_rows())
         return round(total, 6)
+
+    def current_day_total(self) -> float:
+        total = sum(self._row_cost(row) for row in self.iter_today_rows())
+        return round(total, 6)
+
+    def last_run_cost(self) -> float:
+        rows = self.iter_all_rows()
+        if not rows:
+            return 0.0
+        run_id = rows[-1].get("metadata", {}).get("run_id")
+        if not run_id:
+            return round(self._row_cost(rows[-1]), 6)
+        total = sum(self._row_cost(row) for row in rows if row.get("metadata", {}).get("run_id") == run_id)
+        return round(total, 6)
+
+    def runs_this_month(self) -> int:
+        run_ids = {
+            row.get("metadata", {}).get("run_id")
+            for row in self.iter_month_rows()
+            if row.get("metadata", {}).get("run_id")
+        }
+        return len(run_ids)
+
+    def provider_breakdown(self, *, rows: list[dict[str, Any]] | None = None) -> dict[str, float]:
+        breakdown: dict[str, float] = {}
+        for row in rows or self.iter_month_rows():
+            provider = str(row.get("provider") or "unknown")
+            breakdown[provider] = round(breakdown.get(provider, 0.0) + self._row_cost(row), 6)
+        return breakdown
 
     def ensure_within_budget(self) -> None:
         total = self.current_month_total()
@@ -56,12 +111,23 @@ class BudgetTracker:
 
     def status(self) -> dict[str, Any]:
         current = self.current_month_total()
+        today_total = self.current_day_total()
+        status = "cap_reached" if current >= self.hard_limit_usd else "warning" if current >= self.soft_limit_usd else "ok"
         return {
             "month_total_usd": current,
+            "today_total_usd": today_total,
+            "last_run_cost_usd": self.last_run_cost(),
+            "runs_this_month": self.runs_this_month(),
+            "provider_breakdown": self.provider_breakdown(),
             "soft_limit_usd": self.soft_limit_usd,
             "hard_limit_usd": self.hard_limit_usd,
             "soft_limit_reached": current >= self.soft_limit_usd,
             "hard_limit_reached": current >= self.hard_limit_usd,
+            "caps": {
+                "monthly_cap_usd": self.hard_limit_usd,
+                "soft_cap_usd": self.soft_limit_usd,
+            },
+            "status": status,
         }
 
     def record(
@@ -94,6 +160,8 @@ class BudgetTracker:
             fp.write(json.dumps(row, ensure_ascii=False) + "\n")
 
         month_total_after = round(month_total_before + billed_cost_usd, 6)
+        today_total_after = round(self.current_day_total(), 6)
+        last_run_cost_usd = self.last_run_cost()
         record = CostRecord(
             provider=provider,
             operation=operation,
@@ -106,4 +174,7 @@ class BudgetTracker:
             hard_limit_reached=month_total_after >= self.hard_limit_usd,
             metadata=row["metadata"],
         )
-        return record.model_dump()
+        payload = record.model_dump()
+        payload["today_total_usd"] = today_total_after
+        payload["last_run_cost_usd"] = last_run_cost_usd
+        return payload

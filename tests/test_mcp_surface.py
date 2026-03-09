@@ -25,6 +25,7 @@ class MpcSurfaceTests(unittest.TestCase):
                 "research_raw_search",
                 "web_extract_url",
                 "graph_run_research",
+                "research_get_run",
                 "system_budget_status",
             },
         )
