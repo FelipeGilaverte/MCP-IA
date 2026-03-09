@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
-from automation_intel_mcp.mcp_transport import configure_streamable_http_server
+from automation_intel_mcp.mcp_transport import configure_streamable_http_server, run_streamable_http_server
 from automation_intel_mcp.runtime import budget, research_graph, web_fetcher
 from automation_intel_mcp.runtime import settings as app_settings
 
@@ -68,8 +68,9 @@ def main_streamable_http(
         public_base_url=public_base_url or app_settings.research_mcp_public_base_url,
         stateless_http=app_settings.mcp_stateless_http,
         json_response=app_settings.mcp_json_response,
+        allow_all_hosts=True,
     )
-    main(transport="streamable-http")
+    run_streamable_http_server(mcp, allow_all_hosts=True)
 
 
 if __name__ == "__main__":
