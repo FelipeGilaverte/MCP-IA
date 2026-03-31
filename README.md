@@ -370,3 +370,5 @@ Os itens abaixo são locais e não devem entrar na distribuição do código-fon
 - `*.pyc`
 
 Mantenha o `.env.example` no projeto. Mantenha seu `.env` local na sua máquina. Não inclua o `.env` real em repositórios, zips ou distribuição de código-fonte.
+#   M C P -  
+ 
